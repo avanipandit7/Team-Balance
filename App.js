@@ -1,4 +1,8 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { db, storage } from './firebase'; 
+import { collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, orderBy, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const THEME = {
   bg: '#0f172a',
@@ -19,34 +23,39 @@ export default function AccountabilityBoard() {
   const [evidenceFile, setEvidenceFile] = useState({});
   const [showEvidenceModal, setShowEvidenceModal] = useState(null);
 
+  useEffect(() => {
+    const q = query(collection(db, "tasks"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const taskArray = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTasks(taskArray);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Add Task Function
-  const addTask = (e) => {
+  const addTask = async (e) => {
     if (e) e.preventDefault();
-    
     if (!newTask.title.trim() || !newTask.member.trim()) {
       alert('Please enter both task name and assignee name');
       return;
     }
-    
-    const task = { 
-      ...newTask, 
-      id: Date.now(), 
-      status: 'pending', 
-      weight: Number(newTask.weight) 
-    };
-    
-    setTasks(prevTasks => [...prevTasks, task]);
+    await addDoc(collection(db, "tasks"), {
+      ...newTask,
+      status: 'pending',
+      weight: Number(newTask.weight),
+      createdAt: serverTimestamp(),
+      evidence: null
+    });
     setNewTask({ title: '', member: '', weight: 1, deadline: '' });
   };
 
-  const toggleTask = (id) => {
+  const toggleTask = async (id) => {
     const task = tasks.find(t => t.id === id);
+    const taskRef = doc(db, "tasks", id);
     if (task.status === 'pending') {
-      // Show evidence modal when completing a task
       setShowEvidenceModal(id);
     } else {
-      // Uncomplete the task
-      setTasks(tasks.map(t => t.id === id ? { ...t, status: 'pending', evidence: null } : t));
+      await updateDoc(taskRef, { status: 'pending', evidence: null });
     }
   };
 
@@ -55,7 +64,6 @@ export default function AccountabilityBoard() {
     const file = evidenceFile[id] || null;
     
     if (file) {
-      // Read file and create a proper data URL for better viewing
       const reader = new FileReader();
       reader.onload = (e) => {
         const evidence = { 
@@ -128,6 +136,34 @@ export default function AccountabilityBoard() {
     }));
   }, [tasks]);
 
+  // Member statistics for dashboard
+  const memberStats = useMemo(() => {
+    const stats = {};
+    
+    tasks.forEach(t => {
+      const memberKey = t.member.trim().toLowerCase();
+      if (!stats[memberKey]) {
+        stats[memberKey] = {
+          name: t.member.trim(),
+          completed: 0,
+          pending: 0,
+          totalPoints: 0,
+          completedPoints: 0
+        };
+      }
+      
+      if (t.status === 'completed') {
+        stats[memberKey].completed++;
+        stats[memberKey].completedPoints += t.weight;
+      } else {
+        stats[memberKey].pending++;
+      }
+      stats[memberKey].totalPoints += t.weight;
+    });
+    
+    return Object.values(stats);
+  }, [tasks]);
+
   const totalPoints = tasks.reduce((a, b) => a + (b.status === 'completed' ? b.weight : 0), 0);
 
   return (
@@ -142,8 +178,91 @@ export default function AccountabilityBoard() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem' }}>
           
-          {/* Left Column: Input & Education */}
+          {/* Left Column: Dashboard, Input & Education */}
           <aside>
+            {/* Dashboard Section */}
+            <section style={{ backgroundColor: THEME.card, padding: '1.5rem', borderRadius: '1rem', marginBottom: '2rem', border: `1px solid ${THEME.border}` }}>
+              <h3 style={{ marginTop: 0, fontSize: '1.2rem', marginBottom: '1.5rem' }}>📊 Dashboard</h3>
+              
+              {memberStats.length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: THEME.muted, textAlign: 'center', padding: '1rem' }}>
+                  No team members yet. Add tasks to see member statistics.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {memberStats.map((member, index) => {
+                    const completionRate = member.totalPoints > 0 
+                      ? Math.round((member.completedPoints / member.totalPoints) * 100) 
+                      : 0;
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        style={{ 
+                          padding: '1rem', 
+                          backgroundColor: THEME.bg, 
+                          borderRadius: '0.5rem',
+                          border: `1px solid ${THEME.border}`
+                        }}
+                      >
+                        {/* Member Name */}
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginBottom: '0.5rem'
+                        }}>
+                          <span style={{ 
+                            fontWeight: 'bold', 
+                            fontSize: '0.9rem',
+                            color: THEME.chartColors[index % 4]
+                          }}>
+                            {member.name}
+                          </span>
+                          <span style={{ 
+                            fontSize: '0.75rem', 
+                            color: THEME.muted 
+                          }}>
+                            {member.completedPoints}/{member.totalPoints} pts
+                          </span>
+                        </div>
+                        
+                        {/* Progress Bar */}
+                        <div style={{ 
+                          width: '100%', 
+                          height: '8px', 
+                          backgroundColor: THEME.border, 
+                          borderRadius: '4px',
+                          overflow: 'hidden',
+                          marginBottom: '0.5rem'
+                        }}>
+                          <div style={{ 
+                            width: `${completionRate}%`, 
+                            height: '100%', 
+                            backgroundColor: THEME.chartColors[index % 4],
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        
+                        {/* Task Stats */}
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between',
+                          fontSize: '0.75rem',
+                          color: THEME.muted
+                        }}>
+                          <span>✅ {member.completed} completed</span>
+                          <span>⏳ {member.pending} pending</span>
+                          <span>{completionRate}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* New Task Input */}
             <section style={{ backgroundColor: THEME.card, padding: '1.5rem', borderRadius: '1rem', marginBottom: '2rem', border: `1px solid ${THEME.border}` }}>
               <h3 style={{ marginTop: 0, fontSize: '1.2rem' }}>➕ New Task</h3>
               <form onSubmit={addTask} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -202,6 +321,7 @@ export default function AccountabilityBoard() {
               </form>
             </section>
 
+            {/* Point Guide */}
             <section style={{ backgroundColor: THEME.card, border: `1px solid ${THEME.border}`, borderLeft: `4px solid ${THEME.warning}`, padding: '1.5rem', borderRadius: '1rem' }}>
               <h4 style={{ margin: '0 0 10px 0', color: THEME.warning }}>💡 Point Guide</h4>
               <ul style={{ paddingLeft: '1.2rem', fontSize: '0.85rem', color: THEME.muted, lineHeight: '1.6' }}>
@@ -289,13 +409,11 @@ export default function AccountabilityBoard() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // For PDFs and images, open in new window with proper handling
                                 const newWindow = window.open('', '_blank');
                                 if (newWindow) {
                                   const fileExtension = task.evidence.name.split('.').pop().toLowerCase();
                                   
                                   if (fileExtension === 'pdf') {
-                                    // PDF viewer
                                     newWindow.document.write(`
                                       <!DOCTYPE html>
                                       <html>
@@ -312,7 +430,6 @@ export default function AccountabilityBoard() {
                                       </html>
                                     `);
                                   } else if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
-                                    // Image viewer
                                     newWindow.document.write(`
                                       <!DOCTYPE html>
                                       <html>
@@ -329,7 +446,6 @@ export default function AccountabilityBoard() {
                                       </html>
                                     `);
                                   } else {
-                                    // For DOCX and other files, inform user to download
                                     newWindow.document.write(`
                                       <!DOCTYPE html>
                                       <html>
