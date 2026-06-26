@@ -1,0 +1,70 @@
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+    overflow: hidden;
+}
+
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 2rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.fade-in {
+    animation: fadeIn 1s ease-in;
+}
+
+.scroll-effect {
+    transform: translateY(0);
+    opacity: 1;
+    transition: all 0.5s ease;
+}
+
+.scroll-effect.hidden {
+    transform: translateY(50px);
+    opacity: 0;
+}
+
+/* Particle effect styles */
+.particle {
+    position: fixed;
+    border-radius: 50%;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* JavaScript for particle generation */
+
+const createParticle = () => {
+    const particle = document.createElement('div');
+    particle.classList.add('particle');
+    const size = Math.random() * 10 + 5;
+    particle.style.width = `${size}px`;
+    particle.style.height = `${size}px`;
+    particle.style.backgroundColor = `hsl(${Math.random() * 360}, 100%, 50%)`;
+    particle.style.left = `${Math.random() * window.innerWidth}px`;
+    particle.style.top = `${Math.random() * window.innerHeight}px`;
+
+    document.body.appendChild(particle);
+
+    setTimeout(() => {
+        particle.remove();
+    }, 3000);
+};
+
+setInterval(createParticle, 100);

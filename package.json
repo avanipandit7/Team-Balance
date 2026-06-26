@@ -8,8 +8,11 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
     "firebase": "^12.9.0",
+<<<<<<< HEAD
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.16.0",
+=======
+>>>>>>> 82a8b0a07ffdbe77e5f8cc851b83f09bd545622e
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-scripts": "5.0.1",
