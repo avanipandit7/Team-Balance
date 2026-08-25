@@ -1,4 +1,4 @@
-# ⚖️ Team Balance : 
+# ⚖️ Team Balance -
 
 Team Balance is a **React + Firebase** project management app that helps teams track tasks, measure individual contributions, and prevent uneven workload distribution.
 
